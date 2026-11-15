@@ -1,0 +1,6 @@
+slprj/
+*.slxc
+*.mex*
+*.log
+~$*
+.DS_Store
