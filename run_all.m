@@ -30,11 +30,14 @@ cases = {
  'sps2',      'M6: 2 muestras/símbolo',          struct('sps',2)
  'P10',       'M7: potencia Tx 10 W',            struct('P0',10)
  'cd',        'M8: con dispersión cromática',    struct('useCD',1)
+ 'cdcomp',    'M8: CD + ecualizador H*_{CD}',   struct('useCD',1,'useCDcomp',1)
 };
-if exist('figs/resultados_ber.mat','file') % borrar el .mat para repetir el barrido BER
-    load('figs/resultados_ber.mat');
-else
+res = struct();
+if exist('figs/resultados_ber.mat','file') % solo se simulan los casos que faltan; borrar el .mat para repetir todo
+    S = load('figs/resultados_ber.mat'); res = S.res;
+end
 for i = 1:size(cases,1)
+    if isfield(res, cases{i,1}), continue, end
     b = zeros(size(EbNoVec));
     for j = 1:numel(EbNoVec)
         cfg = cases{i,3}; cfg.EbNo = EbNoVec(j); cfg.logPts = 10; cfg.maxNumBits = 2e6; cfg.maxNumErrs = 200;
@@ -45,14 +48,13 @@ for i = 1:size(cases,1)
 end
 theo = berawgn(EbNoVec,'qam',8);
 save('figs/resultados_ber.mat','EbNoVec','res','theo','cases');
-end
 % Variables listas para bertool (pestaña Data Import o Monte Carlo)
 assignin('base','BER_base',res.base);
 
 plot_ber(EbNoVec, theo, res, cases, {'base'}, 'BER vs Eb/N0 — 8-QAM, 50 km, 15 Gbaud', 'figs/05_ber_base.png');
 plot_ber(EbNoVec, theo, res, cases, {'base','normalTx','r005','r09','span2'}, 'Modificaciones de filtros', 'figs/06_ber_filtros.png');
 plot_ber(EbNoVec, theo, res, cases, {'base','delay1','noAGC','sps2','P10'}, 'Modificaciones de retardo, ganancia, muestreo y potencia', 'figs/07_ber_otros.png');
-plot_ber(EbNoVec, theo, res, cases, {'base','cd'}, 'Efecto de la dispersión cromática (D = 17 ps/nm·km)', 'figs/08_ber_cd.png');
+plot_ber(EbNoVec, theo, res, cases, {'base','cd','cdcomp'}, 'Efecto de la dispersión cromática (D = 17 ps/nm·km)', 'figs/08_ber_cd.png');
 
 % ---------- Figuras de las modificaciones ----------
 vis = {
@@ -63,6 +65,7 @@ vis = {
  'noAGC',    struct('useAGC',0,'EbNo',14)
  'sps2',     struct('sps',2,'EbNo',100)
  'cd',       struct('useCD',1,'EbNo',100)
+ 'cdcomp',   struct('useCD',1,'useCDcomp',1,'EbNo',100)
 };
 for i = 1:size(vis,1)
     cfg = vis{i,2}; o = run_vis(mdl, cfg); s = getfield_def(cfg,'sps',8);

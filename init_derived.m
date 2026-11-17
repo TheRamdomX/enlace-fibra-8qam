@@ -9,12 +9,10 @@ if ~useAGC, Krx = 1; end
 % Dispersión cromática: FIR de Ncd taps, retardo fijo de Ncd/2 muestras (= 16 símbolos con sps=8)
 c = 3e8;  beta2 = -lambda^2*Dcd/(2*pi*c);  % s^2/m
 Ncd = 256;  f = (-Ncd/2:Ncd/2-1)*fs/Ncd;
-if useCD
-    H   = exp(-1j*2*pi^2*beta2*(L*1e3)*f.^2);
-    hCD = fftshift(ifft(ifftshift(H)));
-else
-    hCD = [zeros(1,Ncd/2) 1 zeros(1,Ncd/2-1)];   % mismo retardo, sin dispersión
-end
+H     = exp(-1j*2*pi^2*beta2*(L*1e3)*f.^2);
+delta = [zeros(1,Ncd/2) 1 zeros(1,Ncd/2-1)];     % retardo puro: mismo retardo, sin efecto
+hCD     = delta;  if useCD,     hCD     = fftshift(ifft(ifftshift(H)));       end
+hCDcomp = delta;  if useCDcomp, hCDcomp = fftshift(ifft(ifftshift(conj(H)))); end  % ecualizador H*
 cdDelaySym = (Ncd/2)/sps;
 
 % Potencia que entra al AWGN: se mide sobre el filtro Tx real
@@ -25,5 +23,5 @@ y   = tx(s);  y = y(span*sps+1:end);
 Psig = P0*Ga*mean(abs(y).^2);
 
 % Retardo total en bits para Error Rate Calculation
-delaySym  = span + cdDelaySym;           % span/2 (Tx) + span/2 (Rx) + FIR CD
+delaySym  = span + 2*cdDelaySym;         % span/2 (Tx) + span/2 (Rx) + FIR CD + FIR compensación
 delayBits = k*delaySym + delayErr;

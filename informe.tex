@@ -29,7 +29,7 @@
 \end{titlepage}
 
 \begin{abstract}
-Simulamos en Simulink (MATLAB R2026b) un enlace de fibra óptica de \SI{50}{km} que transmite bits con modulación 8-QAM a \SI{15}{Gbaud}, es decir, \SI{45}{Gb/s}. La potencia media es de \SI{1}{W} y los filtros de coseno alzado usan roll-off 0,25 y span de 10 símbolos. El canal incluye la atenuación de la fibra ($\alpha=\SI{0.2}{dB/km}$, \SI{10}{dB} en total), ruido AWGN fijado por $E_b/N_0$ y la dispersión cromática ($D=\SI{17}{ps/(nm.km)}$), implementada con un filtro FIR. La BER simulada coincide con la teórica de 8-QAM: a \SI{10}{dB} obtuvimos $6{,}9\cdot10^{-4}$ y la teoría da $6{,}5\cdot10^{-4}$. Probamos ocho cambios sobre el enlace. Los filtros mal emparejados, un roll-off muy bajo o un span corto generan interferencia entre símbolos (ISI), con penalidades de 1 a \SI{3}{dB} o pisos de error. Un bit de error en el retardo, o quitar el control de ganancia, deja el enlace inservible. Con dispersión cromática y sin compensarla, la BER no baja de 0,15.
+Simulamos en Simulink (MATLAB R2026b) un enlace de fibra óptica de \SI{50}{km} que transmite bits con modulación 8-QAM a \SI{15}{Gbaud}, es decir, \SI{45}{Gb/s}. La potencia media es de \SI{1}{W} y los filtros de coseno alzado usan roll-off 0,25 y span de 10 símbolos. El canal incluye la atenuación de la fibra ($\alpha=\SI{0.2}{dB/km}$, \SI{10}{dB} en total), ruido AWGN fijado por $E_b/N_0$ y la dispersión cromática ($D=\SI{17}{ps/(nm.km)}$), implementada con un filtro FIR. En el receptor agregamos un segundo FIR que la compensa. La BER simulada coincide con la teórica de 8-QAM: a \SI{10}{dB} obtuvimos $6{,}9\cdot10^{-4}$ y la teoría da $6{,}5\cdot10^{-4}$. Probamos ocho cambios sobre el enlace. Los filtros mal emparejados, un roll-off muy bajo o un span corto generan interferencia entre símbolos (ISI), con penalidades de 1 a \SI{3}{dB} o pisos de error. Un bit de error en el retardo, o quitar el control de ganancia, deja el enlace inservible. Con dispersión cromática y sin compensarla, la BER no baja de 0,15; con el ecualizador vuelve a la curva teórica.
 \end{abstract}
 
 \section{Introducción}
@@ -56,7 +56,7 @@ Atenuación & $\alpha L=\SI{10}{dB}$ & $G_a=0{,}1$, $K=0{,}3162$\\
 Potencia tras la fibra & \SI{0.1}{W} (\SI{20}{dBm}) & \SI{0.0125}{W} por muestra en el AWGN\\
 $\beta_2L$ & \SI{-1084}{ps^2} & $DL=\SI{850}{ps/nm}$\\
 Ensanchamiento por CD & $DL\Delta\lambda\approx\SI{127}{ps}$ & $\Delta\lambda\approx\SI{0.15}{nm}$ (\SI{18.75}{GHz}), $\approx1{,}9$ símbolos\\
-Retardo extremo a extremo & 10 símb. (filtros) + 16 símb. (FIR) & = 78 bits en \textit{Error Rate Calculation}\\\bottomrule
+Retardo extremo a extremo & 10 símb. (filtros) + 32 símb. (2 FIR) & = 126 bits en \textit{Error Rate Calculation}\\\bottomrule
 \end{tabular}\end{table}
 
 \subsection{Diagrama de bloques}
@@ -68,11 +68,11 @@ Retardo extremo a extremo & 10 símb. (filtros) + 16 símb. (FIR) & = 78 bits en
 \begin{itemize}\setlength\itemsep{1pt}
 \item \textbf{Transmisor.} \textit{Random Integer Generator} ($M=8$, tramas de 300 símbolos), luego \textit{Rectangular QAM Modulator} ($M=8$, potencia media \SI{1}{W}) y \textit{Raised Cosine Transmit Filter} (RRC). El bloque ``Amplificador P0'' escala la potencia de salida; en el caso base vale 1.
 \item \textbf{Canal.} \textit{Gain} $K$ y después un \textit{Discrete FIR Filter} con $H_{CD}(f)$, de 256 coeficientes complejos calculados por IFFT. Cuando la dispersión está apagada (\texttt{useCD = 0}), ese FIR pasa a ser un retardo puro de 128 muestras, así la alineación no cambia. Sigue el \textit{AWGN Channel} en modo $E_b/N_0$: 3 bits/símbolo, 8 muestras/símbolo y \SI{0.0125}{W} de potencia de entrada.
-\item \textbf{Receptor.} Un AGC de ganancia $1/K$ (hace el papel del preamplificador), el \textit{Raised Cosine Receive Filter} (RRC, diezmado $\times8$), el \textit{Rectangular QAM Demodulator} y un \textit{Integer to Bit Converter}.
-\item \textbf{Medición.} \textit{Error Rate Calculation} compara bits transmitidos y recibidos con 78 bits de retardo. Guarda $[\text{BER},\text{errores},\text{bits}]$ en la variable \texttt{BER} y corta la simulación al llegar a \texttt{maxNumErrs} errores o \texttt{maxNumBits} bits; con eso el modelo se puede usar directo desde la pestaña Monte Carlo de \texttt{bertool}. Hay un \textit{Constellation Diagram} a la salida del modulador y otro a la entrada del demodulador, y un \textit{Eye Diagram} a la salida de cada filtro.
+\item \textbf{Receptor.} Un AGC de ganancia $1/K$ (hace el papel del preamplificador) y un segundo \textit{Discrete FIR Filter}, ``Compensacion CD'', con $H^*_{CD}(f)$. Igual que el de la fibra, se enciende con \texttt{useCDcomp = 1} y, apagado, es un retardo de 128 muestras. Después vienen el \textit{Raised Cosine Receive Filter} (RRC, diezmado $\times8$), el \textit{Rectangular QAM Demodulator} y un \textit{Integer to Bit Converter}.
+\item \textbf{Medición.} \textit{Error Rate Calculation} compara bits transmitidos y recibidos con 126 bits de retardo. Guarda $[\text{BER},\text{errores},\text{bits}]$ en la variable \texttt{BER} y corta la simulación al llegar a \texttt{maxNumErrs} errores o \texttt{maxNumBits} bits; con eso el modelo se puede usar directo desde la pestaña Monte Carlo de \texttt{bertool}. Hay un \textit{Constellation Diagram} a la salida del modulador y otro a la entrada del demodulador, y un \textit{Eye Diagram} a la salida de cada filtro.
 \end{itemize}
 
-Antes de medir revisamos que el modelo estuviera bien armado. Sin ruido ($E_b/N_0=\SI{100}{dB}$) hubo 0 errores en $3\cdot10^5$ bits. La potencia medida a la entrada del AWGN fue \SI{0.01251}{W}, la misma que calculamos. El retardo de 26 símbolos lo confirmamos con la correlación cruzada entre lo enviado y lo recibido.
+Antes de medir revisamos que el modelo estuviera bien armado. Sin ruido ($E_b/N_0=\SI{100}{dB}$) hubo 0 errores en $3\cdot10^5$ bits. La potencia medida a la entrada del AWGN fue \SI{0.01251}{W}, la misma que calculamos. El retardo de 42 símbolos lo confirmamos con la correlación cruzada entre lo enviado y lo recibido.
 
 \section{Resultados}
 \subsection{Diagrama de constelación}
@@ -152,7 +152,8 @@ M4 & Retardo erróneo (+1 bit) & 0,52 & bits desalineados\\
 M5 & Sin AGC en el receptor & 0,18 & constelación escalada por 0,32\\
 M6 & 2 muestras/símbolo & 7,0e-4 & BER igual; ojo pobremente muestreado\\
 M7 & Potencia Tx \SI{10}{W} & 6,2e-4 & BER igual: $E_b/N_0$ es relativo\\
-M8 & Dispersión cromática & 0,14 & piso $\approx0{,}15$ sin ecualizar\\\bottomrule
+M8 & Dispersión cromática & 0,14 & piso $\approx0{,}15$ sin ecualizar\\
+M8' & Dispersión + ecualizador $H^*_{CD}$ & 6,8e-4 & vuelve a la teoría\\\bottomrule
 \end{tabular}\end{table}
 
 \begin{figure}[H]\centering
@@ -177,10 +178,11 @@ M8 & Dispersión cromática & 0,14 & piso $\approx0{,}15$ sin ecualizar\\\bottom
 \textbf{M4 -- Retardo.} Movimos en un bit el retardo de \textit{Error Rate Calculation}. El bloque compara bits que no se corresponden y la BER queda en $\approx0{,}5$ para cualquier $E_b/N_0$. Un error de sincronismo pesa tanto como una SNR mala; probablemente más.
 
 \begin{figure}[H]\centering
-\begin{subfigure}{0.3\textwidth}\includegraphics[width=\linewidth]{m_noAGC_const_rx.png}\caption{M5: sin AGC, \SI{14}{dB}}\end{subfigure}
-\begin{subfigure}{0.3\textwidth}\includegraphics[width=\linewidth]{m_cd_const_rx.png}\caption{M8: con CD, sin ruido}\end{subfigure}
-\begin{subfigure}{0.36\textwidth}\includegraphics[width=\linewidth]{08_ber_cd.png}\caption{M8: BER con y sin CD}\end{subfigure}
-\caption{Constelaciones en el receptor sin AGC y con dispersión cromática.}\label{fig:agccd}
+\begin{subfigure}{0.23\textwidth}\includegraphics[width=\linewidth]{m_noAGC_const_rx.png}\caption{M5: sin AGC, \SI{14}{dB}}\end{subfigure}
+\begin{subfigure}{0.23\textwidth}\includegraphics[width=\linewidth]{m_cd_const_rx.png}\caption{M8: CD, sin ruido}\end{subfigure}
+\begin{subfigure}{0.23\textwidth}\includegraphics[width=\linewidth]{m_cdcomp_const_rx.png}\caption{M8: CD + $H^*_{CD}$}\end{subfigure}
+\begin{subfigure}{0.28\textwidth}\includegraphics[width=\linewidth]{08_ber_cd.png}\caption{M8: BER}\end{subfigure}
+\caption{Constelaciones en el receptor sin AGC, con dispersión cromática y con su compensación.}\label{fig:agccd}
 \end{figure}
 
 \textbf{M5 -- Sin AGC.} La señal llega con $\sqrt{0{,}1}=0{,}32$ veces la amplitud que espera el demodulador. Los umbrales están pensados para \SI{1}{W}, entonces todos los símbolos se deciden como si fueran de las columnas interiores. La BER queda entre 0,15 y 0,24. En QAM la amplitud lleva información (en QPSK no pasaría esto), así que el receptor necesita un control de ganancia o un amplificador óptico.
@@ -189,11 +191,11 @@ M8 & Dispersión cromática & 0,14 & piso $\approx0{,}15$ sin ecualizar\\\bottom
 
 \textbf{M7 -- Potencia de \SI{10}{W}.} Tampoco cambia la BER: el bloque AWGN escala el ruido para mantener el $E_b/N_0$ pedido. En un enlace real sí convendría más potencia, porque el ruido del receptor es fijo, pero solo hasta que aparecen los efectos no lineales de la fibra (efecto Kerr). Este modelo no los incluye.
 
-\textbf{M8 -- Dispersión cromática.} Los bordes del espectro de la señal (\SI{18.75}{GHz} de ancho) llegan con unos \SI{127}{ps} de diferencia, casi 2 símbolos, y eso mezcla cada símbolo con sus vecinos. La longitud de dispersión $L_D=T_s^2/|\beta_2|\approx\SI{205}{km}$ está definida para pulsos gaussianos de ancho $T_s$; aquí subestima el efecto porque no considera el ancho de banda real de la señal. Sin ruido, la constelación se transforma en nubes deformadas y rotadas, y la BER se queda en $\approx0{,}15$ sin importar $E_b/N_0$. $H_{CD}$ solo cambia la fase, de modo que un ecualizador digital $H^*_{CD}(f)=e^{+j2\pi^2\beta_2Lf^2}$ en un receptor coherente la eliminaría por completo. En un sistema IM/DD no sería tan fácil: la dispersión produce desvanecimiento selectivo en frecuencia y eso no se corrige con un filtro lineal.
+\textbf{M8 -- Dispersión cromática.} Los bordes del espectro de la señal (\SI{18.75}{GHz} de ancho) llegan con unos \SI{127}{ps} de diferencia, casi 2 símbolos, y eso mezcla cada símbolo con sus vecinos. La longitud de dispersión $L_D=T_s^2/|\beta_2|\approx\SI{205}{km}$ está definida para pulsos gaussianos de ancho $T_s$; aquí subestima el efecto porque no considera el ancho de banda real de la señal. Sin ruido, la constelación se transforma en nubes deformadas y rotadas, y la BER se queda en $\approx0{,}15$ sin importar $E_b/N_0$. $H_{CD}$ solo cambia la fase, así que se puede deshacer con su conjugado $H^*_{CD}(f)=e^{+j2\pi^2\beta_2Lf^2}$. Lo probamos con el FIR ``Compensacion CD'' del receptor. Sin ruido, la constelación vuelve a 8 puntos limpios y no hubo errores en $10^6$ bits. Con ruido, la curva coincide con la del enlace sin dispersión: $6{,}8\cdot10^{-4}$ a \SI{10}{dB}, contra $6{,}9\cdot10^{-4}$ del caso base. El ecualizador va después del AWGN y no colorea el ruido, porque $|H^*_{CD}|=1$. Esto es lo que hace el DSP de un receptor coherente real. En un sistema IM/DD no sería tan fácil: la dispersión produce desvanecimiento selectivo en frecuencia y eso no se corrige con un filtro lineal.
 
 \section{Conclusiones}
 \begin{itemize}\setlength\itemsep{1pt}
-\item El modelo reproduce la BER teórica de 8-QAM en AWGN y alcanza BER $=10^{-3}$ con $E_b/N_0\approx\SI{9.6}{dB}$. Con esto quedan validados la atenuación ($G_a=0{,}1$), la potencia que recibe el bloque AWGN (\SI{0.0125}{W} por muestra) y el retardo de 78 bits.
+\item El modelo reproduce la BER teórica de 8-QAM en AWGN y alcanza BER $=10^{-3}$ con $E_b/N_0\approx\SI{9.6}{dB}$. Con esto quedan validados la atenuación ($G_a=0{,}1$), la potencia que recibe el bloque AWGN (\SI{0.0125}{W} por muestra) y el retardo de 126 bits.
 \item Los \SI{10}{dB} de pérdida de la fibra no afectan la BER mientras el receptor recupere la amplitud. Sin control de ganancia, en cambio, la detección 8-QAM falla (BER $\approx0{,}15$).
 \item Los filtros tienen que formar un par adaptado RRC--RRC con span suficiente. Normal--raíz cuesta cerca de \SI{1.2}{dB} a BER $=10^{-3}$; el roll-off de 0,05, cerca de \SI{2.8}{dB}; un span muy corto deja un piso de error. El roll-off decide el compromiso entre ancho de banda, $15(1+r)$~GHz, y robustez.
 \item La constelación y el ojo dicen qué tipo de problema tiene el enlace, algo que la curva BER sola no muestra:
@@ -202,9 +204,9 @@ M8 & Dispersión cromática & 0,14 & piso $\approx0{,}15$ sin ecualizar\\\bottom
 \item ISI: nubes deformadas y cruces que no coinciden;
 \item error de ganancia: constelación achicada.
 \end{itemize}
-\item A \SI{1550}{nm}, en \SI{50}{km} y a \SI{15}{Gbaud}, la dispersión cromática produce una ISI de unos 2 símbolos. Sin compensarla, el enlace no sirve. En la práctica se corrige con DSP en receptores coherentes o con fibra compensadora.
+\item A \SI{1550}{nm}, en \SI{50}{km} y a \SI{15}{Gbaud}, la dispersión cromática produce una ISI de unos 2 símbolos. Sin compensarla, el enlace no sirve. Con un FIR que aplica $H^*_{CD}$ en el receptor la penalidad desaparece, igual que en el DSP de un receptor coherente.
 \end{itemize}
 
-\noindent\textbf{Archivos entregados:} \texttt{enlace\_fibra\_8QAM.slx} (modelo); \texttt{init\_params.m} e \texttt{init\_derived.m} (parámetros, cargados en \textit{InitFcn}; la dispersión se activa con \texttt{useCD = 1}); \texttt{build\_model.m} (construcción del modelo); \texttt{run\_all.m} (barridos y figuras).
+\noindent\textbf{Archivos entregados:} \texttt{enlace\_fibra\_8QAM.slx} (modelo); \texttt{init\_params.m} e \texttt{init\_derived.m} (parámetros, cargados en \textit{InitFcn}; la dispersión se activa con \texttt{useCD = 1} y su compensación con \texttt{useCDcomp = 1}); \texttt{build\_model.m} (construcción del modelo); \texttt{run\_all.m} (barridos y figuras).
 
 \end{document}
